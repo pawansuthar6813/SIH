@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors'
 import cookieParser from 'cookie-parser';
 import handleAsyncErrors from './Utils/handleAsyncErrors.js';
+import authRouter from './routes/auth.routes.js';
 
 const app = express();
 
@@ -20,6 +21,8 @@ app.use(express.urlencoded({
 }))
 
 app.use(express.static("public"));
+
+app.use("/api/v1/auth", authRouter);
 
 
 app.use(handleAsyncErrors);

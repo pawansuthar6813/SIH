@@ -1,9 +1,11 @@
-import models from "../Models/index.js";
-import ApiError from "../Utils/ApiError.js";
+import models from "../models/index.js";
+import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
 
 const { userModel } = models;
 
 const generateTokens = async (user) => {
+
 
     // generate accessToken
     const accessToken = await user.generateAccessToken();

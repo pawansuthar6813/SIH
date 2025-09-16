@@ -1,0 +1,372 @@
+{
+  
+    "farmer": "किसान",
+    "admin": "प्रशासक",
+    "expert": "विशेषज्ञ",
+  
+
+    "mobileNumber": "मोबाइल नंबर",
+    "name": "नाम",
+    "profileImage": "प्रोफाइल फोटो",
+    "location": "स्थान",
+    "latitude": "अक्षांश",
+    "longitude": "देशांतर",
+    "address": "पता",
+    "state": "राज्य",
+    "district": "जिला",
+    "pincode": "पिन कोड",
+    "farmSize": "खेत का आकार",
+    "farmingExperience": "खेती का अनुभव",
+    "farmingType": "खेती का प्रकार",
+    "acres": "एकड़",
+    "years": "साल",
+    "organic": "जैविक",
+    "conventional": "पारंपरिक",
+    "mixed": "मिश्रित",
+    "district": "जिला",
+    "state": "राज्य",
+    "national": "राष्ट्रीय",
+    "email": "ईमेल",
+    "specialization": "विशेषज्ञता",
+    "qualifications": "योग्यताएं",
+    "certifications": "प्रमाणपत्र",
+  
+    "hindi": "हिंदी",
+    "cropName": "फसल का नाम",
+    "variety": "किस्म",
+    "season": "मौसम",
+    "plantingDate": "बुवाई की तारीख",
+    "expectedHarvestDate": "अपेक्षित कटाई की तारीख",
+    "actualHarvestDate": "वास्तविक कटाई की तारीख",
+    "fieldArea": "खेत का क्षेत्रफल",
+    "fieldLocation": "खेत का स्थान",
+    "fieldName": "खेत का नाम",
+    "soilType": "मिट्टी का प्रकार",
+    "irrigationType": "सिंचाई का प्रकार",
+    "seedSource": "बीज स्रोत",
+    "cropStage": "फसल अवस्था",
+    "status": "स्थिति",
+    "expectedYield": "अपेक्षित उत्पादन",
+    "actualYield": "वास्तविक उत्पादन",
+    "investmentAmount": "निवेश राशि",
+    "revenue": "आय",
+    "profitLoss": "लाभ-हानि",
+    "amount": "मात्रा",
+    "unit": "इकाई",
+  
+  "crops": {
+    "rice": "चावल",
+    "wheat": "गेहूं",
+    "cotton": "कपास",
+    "sugarcane": "गन्ना",
+    "maize": "मक्का",
+    "barley": "जौ",
+    "soybean": "सोयाबीन",
+    "groundnut": "मूंगफली",
+    "sunflower": "सूरजमुखी",
+    "mustard": "सरसों",
+    "potato": "आलू",
+    "onion": "प्याज",
+    "tomato": "टमाटर",
+    "other": "अन्य"
+  },
+  
+  "seasons": {
+    "kharif": "खरीफ",
+    "rabi": "रबी",
+    "zaid": "जायद"
+  },
+  
+  "soilTypes": {
+    "clay": "चिकनी मिट्टी",
+    "sandy": "बलुई मिट्टी",
+    "loamy": "दोमट मिट्टी",
+    "silt": "गाद मिट्टी",
+    "peaty": "कार्बनिक मिट्टी",
+    "chalky": "चूना मिट्टी",
+    "red": "लाल मिट्टी",
+    "black": "काली मिट्टी",
+    "alluvial": "जलोढ़ मिट्टी"
+  },
+  
+  "irrigationTypes": {
+    "drip": "बूंद-बूंद सिंचाई",
+    "sprinkler": "स्प्रिंकलर सिंचाई",
+    "flood": "बाढ़ सिंचाई",
+    "manual": "हस्तचालित",
+    "rain_fed": "वर्षा आधारित",
+    "canal": "नहर सिंचाई",
+    "tube_well": "नलकूप"
+  },
+  
+  "cropStages": {
+    "germination": "अंकुरण",
+    "vegetative": "वानस्पतिक वृद्धि",
+    "flowering": "फूल आना",
+    "fruiting": "फल आना",
+    "maturity": "पकाव",
+    "harvested": "कटाई हो गई"
+  },
+  
+  "cropStatus": {
+    "active": "सक्रिय",
+    "harvested": "कटाई हो गई",
+    "damaged": "क्षतिग्रस्त",
+    "abandoned": "छोड़ दिया गया"
+  },
+  
+  "units": {
+    "kg": "किग्रा",
+    "quintal": "क्विंटल",
+    "ton": "टन"
+  },
+  
+  "photoAnalysis": {
+    "captureDate": "फोटो लेने की तारीख",
+    "daysSincePlanting": "बुवाई के दिन",
+    "photos": "फोटो",
+    "imageType": "फोटो का प्रकार",
+    "gpsLocation": "जीपीएस स्थान",
+    "timestamp": "समय",
+    "fileSize": "फाइल का आकार",
+    "resolution": "रिज़ोल्यूशन",
+    "healthAnalysis": "स्वास्थ्य विश्लेषण",
+    "growthAnalysis": "वृद्धि विश्लेषण",
+    "environmentalFactors": "पर्यावरणीय कारक",
+    "aiRecommendations": "एआई सुझाव",
+    "expertReviews": "विशेषज्ञ समीक्षा",
+    "isVerifiedByExpert": "विशेषज्ञ द्वारा सत्यापित",
+    "analysisVersion": "विश्लेषण संस्करण",
+    "processingStatus": "प्रसंस्करण स्थिति",
+    "processingTime": "प्रसंस्करण समय"
+  },
+  
+  "imageTypes": {
+    "plant_overview": "पौधे का सामान्य दृश्य",
+    "leaves": "पत्तियां",
+    "stem": "तना",
+    "fruit": "फल",
+    "soil": "मिट्टी",
+    "pest_damage": "कीट क्षति",
+    "disease_symptom": "रोग के लक्षण"
+  },
+  
+  "healthAnalysis": {
+    "overallHealth": "समग्र स्वास्थ्य",
+    "healthScore": "स्वास्थ्य स्कोर",
+    "diseaseDetection": "रोग पहचान",
+    "pestDetection": "कीट पहचान",
+    "nutritionalDeficiency": "पोषक तत्व की कमी",
+    "diseaseName": "रोग का नाम",
+    "confidence": "विश्वसनीयता",
+    "severity": "गंभीरता",
+    "affectedArea": "प्रभावित क्षेत्र",
+    "pestName": "कीट का नाम",
+    "count": "संख्या",
+    "nutrient": "पोषक तत्व",
+    "deficiencyLevel": "कमी का स्तर"
+  },
+  
+  "healthLevels": {
+    "excellent": "उत्कृष्ट",
+    "good": "अच्छा",
+    "fair": "औसत",
+    "poor": "खराब",
+    "critical": "गंभीर"
+  },
+  
+  "severityLevels": {
+    "low": "कम",
+    "medium": "मध्यम",
+    "high": "अधिक"
+  },
+  
+  "deficiencyLevels": {
+    "mild": "हल्का",
+    "moderate": "मध्यम",
+    "severe": "गंभीर"
+  },
+  
+  "nutrients": {
+    "nitrogen": "नाइट्रोजन",
+    "phosphorus": "फास्फोरस",
+    "potassium": "पोटेशियम",
+    "magnesium": "मैग्नीशियम",
+    "iron": "लोहा",
+    "zinc": "जिंक"
+  },
+  
+  "growthAnalysis": {
+    "plantHeight": "पौधे की ऊंचाई",
+    "leafCount": "पत्तियों की संख्या",
+    "stemThickness": "तने की मोटाई",
+    "leafColor": "पत्तियों का रंग",
+    "floweringStatus": "फूल आने की स्थिति",
+    "fruitingStatus": "फल आने की स्थिति",
+    "fruitCount": "फलों की संख्या"
+  },
+  
+  "leafColors": {
+    "dark_green": "गहरा हरा",
+    "light_green": "हल्का हरा",
+    "yellow": "पीला",
+    "brown": "भूरा",
+    "mixed": "मिश्रित"
+  },
+  
+  "environmentalFactors": {
+    "soilMoisture": "मिट्टी की नमी",
+    "weedPresence": "खरपतवार की उपस्थिति",
+    "weatherCondition": "मौसम की स्थिति"
+  },
+  
+  "soilMoistureLevels": {
+    "very_dry": "बहुत सूखा",
+    "dry": "सूखा",
+    "optimal": "उचित",
+    "wet": "गीला",
+    "waterlogged": "जल भराव"
+  },
+  
+  "weedLevels": {
+    "none": "कोई नहीं",
+    "low": "कम",
+    "medium": "मध्यम",
+    "high": "अधिक"
+  },
+  
+  "weatherConditions": {
+    "sunny": "धूप",
+    "cloudy": "बादल",
+    "rainy": "बारिश",
+    "stormy": "तूफान"
+  },
+  
+  "recommendations": {
+    "type": "सुझाव का प्रकार",
+    "priority": "प्राथमिकता",
+    "description": "विवरण",
+    "cost": "लागत",
+    "isImplemented": "लागू किया गया",
+    "implementationDate": "लागू करने की तारीख",
+    "consultationFee": "परामर्श शुल्क"
+  },
+  
+  "recommendationTypes": {
+    "irrigation": "सिंचाई",
+    "fertilization": "उर्वरकीकरण",
+    "pest_control": "कीट नियंत्रण",
+    "disease_treatment": "रोग उपचार",
+    "pruning": "छंटाई",
+    "harvesting": "कटाई",
+    "soil_treatment": "मिट्टी उपचार"
+  },
+  
+  "priorityLevels": {
+    "low": "कम",
+    "medium": "मध्यम",
+    "high": "अधिक",
+    "urgent": "तत्काल"
+  },
+  
+  "processingStatus": {
+    "pending": "लंबित",
+    "processing": "प्रसंस्करण में",
+    "completed": "पूर्ण",
+    "failed": "असफल"
+  },
+  
+  "expertReview": {
+    "reviewDate": "समीक्षा की तारीख",
+    "comments": "टिप्पणियां",
+    "rating": "रेटिंग",
+    "recommendations": "सुझाव",
+    "agreedWithAI": "एआई से सहमत"
+  },
+  
+  "common": {
+    "yes": "हां",
+    "no": "नहीं",
+    "true": "सत्य",
+    "false": "असत्य",
+    "save": "सेव करें",
+    "cancel": "रद्द करें",
+    "submit": "जमा करें",
+    "edit": "संपादित करें",
+    "delete": "हटाएं",
+    "view": "देखें",
+    "add": "जोड़ें",
+    "update": "अपडेट करें",
+    "search": "खोजें",
+    "filter": "फिल्टर",
+    "sort": "क्रमबद्ध करें",
+    "next": "अगला",
+    "previous": "पिछला",
+    "back": "वापस",
+    "continue": "जारी रखें",
+    "confirm": "पुष्टि करें",
+    "success": "सफलता",
+    "error": "त्रुटि",
+    "warning": "चेतावनी",
+    "info": "जानकारी",
+    "loading": "लोड हो रहा है",
+    "required": "आवश्यक",
+    "optional": "वैकल्पिक",
+    "select": "चुनें",
+    "upload": "अपलोड करें",
+    "download": "डाउनलोड करें",
+    "share": "साझा करें",
+    "print": "प्रिंट करें",
+    "export": "एक्सपोर्ट करें",
+    "import": "इम्पोर्ट करें",
+    "refresh": "रिफ्रेश करें",
+    "close": "बंद करें",
+    "open": "खोलें",
+    "show": "दिखाएं",
+    "hide": "छुपाएं",
+    "enable": "सक्षम करें",
+    "disable": "अक्षम करें",
+    "start": "शुरू करें",
+    "stop": "रोकें",
+    "pause": "रोकें",
+    "resume": "जारी रखें"
+  },
+  
+  "timeUnits": {
+    "seconds": "सेकंड",
+    "minutes": "मिनट",
+    "hours": "घंटे",
+    "days": "दिन",
+    "weeks": "सप्ताह",
+    "months": "महीने",
+    "years": "साल"
+  },
+  
+  "currency": {
+    "rupees": "रुपए",
+    "inr": "₹"
+  },
+  
+  "navigation": {
+    "home": "होम",
+    "dashboard": "डैशबोर्ड",
+    "profile": "प्रोफाइल",
+    "crops": "फसलें",
+    "analysis": "विश्लेषण",
+    "experts": "विशेषज्ञ",
+    "reports": "रिपोर्ट",
+    "settings": "सेटिंग्स",
+    "help": "सहायता",
+    "logout": "लॉग आउट"
+  },
+  
+  "validation": {
+    "invalidMobile": "अमान्य मोबाइल नंबर",
+    "invalidEmail": "अमान्य ईमेल",
+    "invalidPincode": "अमान्य पिन कोड",
+    "fieldRequired": "यह फील्ड आवश्यक है",
+    "minLength": "न्यूनतम लंबाई",
+    "maxLength": "अधिकतम लंबाई",
+    "invalidFormat": "अमान्य प्रारूप"
+  }
+}
