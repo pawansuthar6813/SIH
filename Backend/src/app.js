@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import handleAsyncErrors from './Shared/utils/handleAsyncErrors.js';
 import authRouter from './AuthService/routes/auth.routes.js';
 import router from './ChatService/chat.routes.js';
+import botRouter from './ChatService/bot.routes.js';
 import ChatSocketManager from './ChatService/chatSocketConfig.js';
 
 const app = express();
@@ -44,6 +45,7 @@ app.use((req, res, next) => {
 // Routes
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/chat", chatRouter);
+app.use("/api/v1/bot", botRouter)
 
 // Health check endpoint
 app.get("/api/v1/health", (req, res) => {

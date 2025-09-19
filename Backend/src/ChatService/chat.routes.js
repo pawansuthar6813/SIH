@@ -1,5 +1,5 @@
 import express from 'express';
-import chatControllers from './chat.controller.js'; // Fixed: changed from chatController to chatControllers
+import chatControllers from './chat.controller.js';
 import { authFarmer } from '../AuthService/middlewares/auth.middleware.js';
 import upload from '../Shared/middlewares/upload.middleware.js';
 import chatServiceModels from './models/index.js';
@@ -9,7 +9,8 @@ const {
     getMessages,
     sendFarmerMessage,
     sendProactiveMessage,
-    markAsRead
+    markAsRead,
+    getAllConversations
 } = chatControllers;
 
 const { conversationModel } = chatServiceModels;
@@ -17,54 +18,13 @@ const { conversationModel } = chatServiceModels;
 const router = express.Router();
 
 // Middleware to authenticate all chat routes
-router.use(authFarmer); // Fixed: changed from authMiddleware to authFarmer
+router.use(authFarmer);
 
 // Get or create conversation for farmer
-router.get('/conversation', async (req, res) => {
-    try {
-        const farmerId = req.user._id; // Fixed: changed from req.user.id to req.user._id (mongoose uses _id)
-        const conversation = await getOrCreateConversation(farmerId);
-        
-        res.json({
-            success: true,
-            data: {
-                conversation,
-                message: 'Conversation retrieved successfully'
-            }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to get conversation',
-            error: error.message
-        });
-    }
-});
+router.get('/conversation', getOrCreateConversation);
 
 // Get messages for a conversation
-router.get('/messages/:conversationId', async (req, res) => {
-    try {
-        const { conversationId } = req.params;
-        const { page = 1, limit = 50 } = req.query;
-        
-        const messages = await getMessages(conversationId, parseInt(page), parseInt(limit));
-        
-        res.json({
-            success: true,
-            data: {
-                messages,
-                page: parseInt(page),
-                limit: parseInt(limit)
-            }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to get messages',
-            error: error.message
-        });
-    }
-});
+router.get('/messages/:conversationId', getMessages);
 
 // Send text message (REST endpoint as fallback)
 router.post('/send-message', async (req, res) => {
@@ -116,12 +76,12 @@ router.post('/send-image', upload.single('image'), async (req, res) => {
             });
         }
         
-        const imageUrl = req.file.path; // Assuming cloudinary upload
+        const imageUrl = req.file.path; // Cloudinary URL
         
         const message = await sendFarmerMessage(conversationId, {
             messageType: 'image',
             imageUrl,
-            content: 'Image uploaded' // Optional description
+            content: 'Image uploaded'
         });
         
         // Emit to socket
@@ -149,7 +109,7 @@ router.post('/send-image', upload.single('image'), async (req, res) => {
 router.patch('/mark-read/:conversationId', async (req, res) => {
     try {
         const { conversationId } = req.params;
-        const userId = req.user._id; // Fixed: changed from req.user.id to req.user._id
+        const userId = req.user._id;
         
         await markAsRead(conversationId, userId);
         
@@ -167,8 +127,7 @@ router.patch('/mark-read/:conversationId', async (req, res) => {
 });
 
 // Admin routes
-// Send proactive message (admin only)
-router.post('/proactive-message', async (req, res) => {
+router.post('/admin/proactive-message', async (req, res) => {
     try {
         if (req.user.role !== 'admin') {
             return res.status(403).json({
@@ -192,7 +151,7 @@ router.post('/proactive-message', async (req, res) => {
         });
         
         // Emit to farmer via socket
-        if (req.chatManager) {
+        if (req.io) {
             const conversation = await conversationModel.findById(conversationId);
             req.io.to(`user_${conversation.farmerId}`).emit('proactive_alert', {
                 message,
@@ -214,47 +173,7 @@ router.post('/proactive-message', async (req, res) => {
 });
 
 // Get all conversations (admin only)
-router.get('/admin/conversations', async (req, res) => {
-    try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Admin access required'
-            });
-        }
-        
-        const { page = 1, limit = 20 } = req.query;
-        const skip = (page - 1) * limit;
-        
-        const conversations = await conversationModel.find()
-            .populate('farmerId', 'name mobileNumber state district')
-            .populate('lastMessage')
-            .sort({ lastActivity: -1 })
-            .skip(skip)
-            .limit(parseInt(limit));
-        
-        const total = await conversationModel.countDocuments();
-        
-        res.json({
-            success: true,
-            data: {
-                conversations,
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total,
-                    pages: Math.ceil(total / limit)
-                }
-            }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to get conversations',
-            error: error.message
-        });
-    }
-});
+router.get('/admin/conversations', getAllConversations);
 
 // Broadcast emergency message (admin only)
 router.post('/admin/broadcast', async (req, res) => {

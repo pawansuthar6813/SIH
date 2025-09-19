@@ -25,14 +25,17 @@ class ChatSocketManager {
                 credentials: true
             },
             pingTimeout: 60000,
-            pingInterval: 25000
+            pingInterval: 25000,
+            maxHttpBufferSize: 50e6, // 50MB for large video files
+            allowEIO3: true // Allow Engine.IO v3 clients
         });
 
         this.connectedUsers = new Map(); // Store user connections
+        this.activeUploads = new Map(); // Track active file uploads
         this.setupMiddleware();
         this.setupEventHandlers();
         
-        console.log('🌾 Kisaan Sahayak Chat Socket Server initialized');
+        console.log('🌾 Kisaan Sahayak Chat Socket Server initialized with media support');
     }
 
     // Authentication middleware for socket connections
@@ -81,6 +84,7 @@ class ChatSocketManager {
             
             // Setup event handlers for this socket
             this.handleFarmerEvents(socket);
+            this.handleMediaEvents(socket); // NEW: Handle media events
             this.handleAdminEvents(socket);
             this.handleGeneralEvents(socket);
             
@@ -88,6 +92,8 @@ class ChatSocketManager {
             socket.on('disconnect', () => {
                 console.log(`👋 User disconnected: ${socket.name} (${socket.userId})`);
                 this.connectedUsers.delete(socket.userId);
+                // Clean up any active uploads for this user
+                this.cleanupActiveUploads(socket.userId);
             });
         });
     }
@@ -129,12 +135,12 @@ class ChatSocketManager {
             }
         });
 
-        // Handle farmer sending message to AI
+        // Handle farmer sending TEXT message to AI
         socket.on('send_message', async (data) => {
             try {
                 const { content, messageType = 'text', imageUrl = null } = data;
                 
-                console.log(`📝 ${socket.name} sending message to AI: ${content?.substring(0, 50)}...`);
+                console.log(`📝 ${socket.name} sending ${messageType} message to AI`);
                 
                 // Get conversation first
                 const conversation = await this.getOrCreateConversationForSocket(socket.userId);
@@ -209,6 +215,179 @@ class ChatSocketManager {
         });
     }
 
+    // NEW: Handle media-specific events (voice, video, image)
+    handleMediaEvents(socket) {
+        // Handle voice message from farmer
+        socket.on('send_voice_message', async (data) => {
+            try {
+                const { conversationId, voiceData, duration, size } = data;
+                
+                console.log(`🎤 ${socket.name} sending voice message (${duration}s)`);
+                
+                if (!conversationId || !voiceData || !duration) {
+                    throw new Error('Missing required voice data');
+                }
+                
+                // Get conversation
+                const conversation = await this.getOrCreateConversationForSocket(socket.userId);
+                
+                // In a real implementation, you would upload voiceData to cloud storage
+                // For now, we'll simulate the voice URL
+                const voiceUrl = await this.uploadAudioToCloudinary(voiceData, socket.userId);
+                
+                // Save voice message
+                const message = await this.saveFarmerMessage(conversation._id, {
+                    messageType: 'voice',
+                    voiceUrl,
+                    voiceDuration: duration,
+                    voiceSize: size,
+                    content: `Voice message (${duration}s)`
+                });
+                
+                // Emit confirmation to farmer
+                socket.emit('voice_message_sent', {
+                    success: true,
+                    message: message
+                });
+                
+                // Generate AI response
+                setTimeout(async () => {
+                    await this.generateAndSendAIResponse(conversation._id, message, socket);
+                }, 1500); // Longer delay for voice processing
+                
+            } catch (error) {
+                console.error('Error sending voice message:', error);
+                socket.emit('error', {
+                    success: false,
+                    message: 'Failed to send voice message',
+                    error: error.message
+                });
+            }
+        });
+
+        // Handle video message from farmer
+        socket.on('send_video_message', async (data) => {
+            try {
+                const { conversationId, videoData, duration, size, thumbnail } = data;
+                
+                console.log(`🎥 ${socket.name} sending video message (${duration}s)`);
+                
+                if (!conversationId || !videoData || !duration) {
+                    throw new Error('Missing required video data');
+                }
+                
+                // Get conversation
+                const conversation = await this.getOrCreateConversationForSocket(socket.userId);
+                
+                // Upload video to cloud storage
+                const videoUrl = await this.uploadVideoToCloudinary(videoData, socket.userId);
+                const videoThumbnail = thumbnail ? await this.uploadImageToCloudinary(thumbnail, socket.userId) : null;
+                
+                // Save video message
+                const message = await this.saveFarmerMessage(conversation._id, {
+                    messageType: 'video',
+                    videoUrl,
+                    videoDuration: duration,
+                    videoSize: size,
+                    videoThumbnail,
+                    content: `Video message (${duration}s)`
+                });
+                
+                // Emit confirmation to farmer
+                socket.emit('video_message_sent', {
+                    success: true,
+                    message: message
+                });
+                
+                // Generate AI response
+                setTimeout(async () => {
+                    await this.generateAndSendAIResponse(conversation._id, message, socket);
+                }, 2000); // Even longer delay for video processing
+                
+            } catch (error) {
+                console.error('Error sending video message:', error);
+                socket.emit('error', {
+                    success: false,
+                    message: 'Failed to send video message',
+                    error: error.message
+                });
+            }
+        });
+
+        // Handle chunked file upload for large files
+        socket.on('upload_chunk', async (data) => {
+            try {
+                const { fileId, chunkIndex, chunkData, totalChunks, fileType, conversationId } = data;
+                
+                // Initialize upload tracking if first chunk
+                if (chunkIndex === 0) {
+                    this.activeUploads.set(fileId, {
+                        userId: socket.userId,
+                        conversationId,
+                        fileType,
+                        totalChunks,
+                        receivedChunks: new Map(),
+                        startedAt: new Date()
+                    });
+                }
+                
+                const upload = this.activeUploads.get(fileId);
+                if (!upload) {
+                    throw new Error('Upload session not found');
+                }
+                
+                // Store chunk
+                upload.receivedChunks.set(chunkIndex, chunkData);
+                
+                // Emit progress
+                socket.emit('upload_progress', {
+                    fileId,
+                    progress: (upload.receivedChunks.size / totalChunks) * 100
+                });
+                
+                // Check if all chunks received
+                if (upload.receivedChunks.size === totalChunks) {
+                    await this.processCompleteUpload(fileId, socket);
+                }
+                
+            } catch (error) {
+                console.error('Error handling upload chunk:', error);
+                socket.emit('upload_error', {
+                    fileId: data.fileId,
+                    error: error.message
+                });
+            }
+        });
+
+        // Handle upload cancellation
+        socket.on('cancel_upload', (data) => {
+            const { fileId } = data;
+            this.activeUploads.delete(fileId);
+            socket.emit('upload_cancelled', { fileId });
+        });
+
+        // Handle media playback status (for analytics)
+        socket.on('media_played', async (data) => {
+            try {
+                const { messageId, mediaType, duration } = data;
+                
+                // Update message with playback info (optional analytics)
+                await messageModel.findByIdAndUpdate(messageId, {
+                    $push: {
+                        playbackHistory: {
+                            playedAt: new Date(),
+                            duration: duration || 0,
+                            playedBy: socket.userId
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error updating media playback:', error);
+            }
+        });
+    }
+
     // Handle admin-specific events
     handleAdminEvents(socket) {
         if (socket.userRole !== 'admin') return;
@@ -222,7 +401,7 @@ class ChatSocketManager {
         // Admin sends proactive message to specific farmer
         socket.on('send_proactive_message', async (data) => {
             try {
-                const { farmerId, content, alertType } = data;
+                const { farmerId, content, alertType, messageType = 'text', mediaUrl } = data;
                 
                 // Get farmer's conversation
                 const conversation = await conversationModel.findOne({ farmerId });
@@ -230,10 +409,22 @@ class ChatSocketManager {
                     throw new Error('Conversation not found for farmer');
                 }
                 
-                const message = await sendProactiveMessage(conversation._id, {
+                const messageData = {
                     content,
-                    alertType
-                });
+                    alertType,
+                    messageType
+                };
+                
+                // Add media URL if provided
+                if (mediaUrl && messageType === 'image') {
+                    messageData.imageUrl = mediaUrl;
+                } else if (mediaUrl && messageType === 'voice') {
+                    messageData.voiceUrl = mediaUrl;
+                } else if (mediaUrl && messageType === 'video') {
+                    messageData.videoUrl = mediaUrl;
+                }
+                
+                const message = await sendProactiveMessage(conversation._id, messageData);
                 
                 // Send to specific farmer if online
                 this.io.to(`user_${farmerId}`).emit('proactive_alert', {
@@ -281,7 +472,116 @@ class ChatSocketManager {
         });
     }
 
-    // Helper methods
+    // Helper methods for media handling
+    async processCompleteUpload(fileId, socket) {
+        try {
+            const upload = this.activeUploads.get(fileId);
+            if (!upload) throw new Error('Upload not found');
+            
+            // Reconstruct file from chunks
+            const chunks = [];
+            for (let i = 0; i < upload.totalChunks; i++) {
+                chunks.push(upload.receivedChunks.get(i));
+            }
+            const completeFile = Buffer.concat(chunks);
+            
+            // Upload to cloud storage based on file type
+            let mediaUrl;
+            if (upload.fileType.startsWith('image/')) {
+                mediaUrl = await this.uploadImageToCloudinary(completeFile, upload.userId);
+            } else if (upload.fileType.startsWith('audio/')) {
+                mediaUrl = await this.uploadAudioToCloudinary(completeFile, upload.userId);
+            } else if (upload.fileType.startsWith('video/')) {
+                mediaUrl = await this.uploadVideoToCloudinary(completeFile, upload.userId);
+            } else {
+                throw new Error('Unsupported file type');
+            }
+            
+            // Create message based on file type
+            const conversation = await this.getOrCreateConversationForSocket(upload.userId);
+            let messageData = {
+                messageType: upload.fileType.startsWith('image/') ? 'image' : 
+                           upload.fileType.startsWith('audio/') ? 'voice' : 'video'
+            };
+            
+            if (messageData.messageType === 'image') {
+                messageData.imageUrl = mediaUrl;
+                messageData.content = 'Image uploaded';
+            } else if (messageData.messageType === 'voice') {
+                messageData.voiceUrl = mediaUrl;
+                messageData.voiceDuration = upload.duration || 0;
+                messageData.voiceSize = completeFile.length;
+                messageData.content = `Voice message (${upload.duration || 0}s)`;
+            } else if (messageData.messageType === 'video') {
+                messageData.videoUrl = mediaUrl;
+                messageData.videoDuration = upload.duration || 0;
+                messageData.videoSize = completeFile.length;
+                messageData.videoThumbnail = upload.thumbnail || null;
+                messageData.content = `Video message (${upload.duration || 0}s)`;
+            }
+            
+            // Save message
+            const message = await this.saveFarmerMessage(conversation._id, messageData);
+            
+            // Clean up upload tracking
+            this.activeUploads.delete(fileId);
+            
+            // Emit success to farmer
+            socket.emit('upload_complete', {
+                success: true,
+                fileId,
+                message
+            });
+            
+            // Generate AI response
+            setTimeout(async () => {
+                await this.generateAndSendAIResponse(conversation._id, message, socket);
+            }, 1500);
+            
+        } catch (error) {
+            console.error('Error processing complete upload:', error);
+            this.activeUploads.delete(fileId);
+            socket.emit('upload_error', {
+                fileId,
+                error: error.message
+            });
+        }
+    }
+
+    // Simulated cloud upload methods (replace with actual cloud storage implementation)
+    async uploadImageToCloudinary(imageData, userId) {
+        // TODO: Implement actual Cloudinary image upload
+        // For now, return a simulated URL
+        const timestamp = Date.now();
+        return `https://res.cloudinary.com/your-cloud/image/upload/v${timestamp}/${userId}_image.jpg`;
+    }
+
+    async uploadAudioToCloudinary(audioData, userId) {
+        // TODO: Implement actual Cloudinary audio upload
+        // For now, return a simulated URL
+        const timestamp = Date.now();
+        return `https://res.cloudinary.com/your-cloud/video/upload/v${timestamp}/${userId}_audio.mp3`;
+    }
+
+    async uploadVideoToCloudinary(videoData, userId) {
+        // TODO: Implement actual Cloudinary video upload
+        // For now, return a simulated URL
+        const timestamp = Date.now();
+        return `https://res.cloudinary.com/your-cloud/video/upload/v${timestamp}/${userId}_video.mp4`;
+    }
+
+    // Clean up active uploads for disconnected user
+    cleanupActiveUploads(userId) {
+        const uploadsToDelete = [];
+        for (const [fileId, upload] of this.activeUploads.entries()) {
+            if (upload.userId === userId) {
+                uploadsToDelete.push(fileId);
+            }
+        }
+        uploadsToDelete.forEach(fileId => this.activeUploads.delete(fileId));
+    }
+
+    // Helper methods (existing methods from original file)
     async getOrCreateConversationForSocket(farmerId) {
         try {
             // Check if farmer exists
@@ -333,19 +633,48 @@ class ChatSocketManager {
                 throw new Error('Conversation not found');
             }
 
-            const { content, messageType = 'text', imageUrl } = messageData;
+            const { 
+                content, 
+                messageType = 'text', 
+                imageUrl,
+                voiceUrl,
+                voiceDuration,
+                voiceSize,
+                videoUrl,
+                videoDuration,
+                videoSize,
+                videoThumbnail
+            } = messageData;
 
-            // Create farmer message
-            const message = new messageModel({
+            // Create farmer message with all possible fields
+            const messageFields = {
                 conversationId,
                 senderId: conversation.farmerId.toString(),
                 senderType: 'farmer',
                 messageType,
-                content,
-                imageUrl,
                 status: 'sent'
-            });
+            };
 
+            // Add content based on message type
+            if (messageType === 'text') {
+                messageFields.content = content;
+            } else if (messageType === 'image') {
+                messageFields.imageUrl = imageUrl;
+                messageFields.content = content || 'Image shared';
+            } else if (messageType === 'voice') {
+                messageFields.voiceUrl = voiceUrl;
+                messageFields.voiceDuration = voiceDuration;
+                messageFields.voiceSize = voiceSize;
+                messageFields.content = content || `Voice message (${voiceDuration}s)`;
+            } else if (messageType === 'video') {
+                messageFields.videoUrl = videoUrl;
+                messageFields.videoDuration = videoDuration;
+                messageFields.videoSize = videoSize;
+                messageFields.videoThumbnail = videoThumbnail;
+                messageFields.content = content || `Video message (${videoDuration}s)`;
+            }
+
+            const message = new messageModel(messageFields);
             await message.save();
 
             // Update conversation
@@ -363,7 +692,7 @@ class ChatSocketManager {
 
     async generateAndSendAIResponse(conversationId, farmerMessage, socket) {
         try {
-            console.log('🤖 Generating AI response...');
+            console.log('AI generating response...');
             
             // Simulate AI thinking time
             socket.emit('ai_typing', { isTyping: true });
@@ -432,6 +761,12 @@ class ChatSocketManager {
 💰 Government scheme information
 📊 Market prices and selling advice
 
+You can send me:
+📝 Text messages with your questions
+📷 Photos of your crops or issues  
+🎤 Voice messages (I can understand Hindi and English)
+🎥 Videos showing your farm conditions
+
 Feel free to ask me any farming-related questions!`;
 
         const message = new messageModel({
@@ -482,7 +817,7 @@ Feel free to ask me any farming-related questions!`;
 
     // Method to broadcast to all farmers (for emergency alerts)
     async broadcastToAllFarmers(message, alertType = 'emergency') {
-        console.log(`📢 Broadcasting ${alertType} alert to all farmers`);
+        console.log(`Broadcasting ${alertType} alert to all farmers`);
         
         this.io.emit('emergency_alert', {
             message: message,
@@ -496,7 +831,8 @@ Feel free to ask me any farming-related questions!`;
         return {
             totalConnections: this.connectedUsers.size,
             farmers: Array.from(this.connectedUsers.values()).filter(u => u.userRole === 'farmer').length,
-            admins: Array.from(this.connectedUsers.values()).filter(u => u.userRole === 'admin').length
+            admins: Array.from(this.connectedUsers.values()).filter(u => u.userRole === 'admin').length,
+            activeUploads: this.activeUploads.size
         };
     }
 

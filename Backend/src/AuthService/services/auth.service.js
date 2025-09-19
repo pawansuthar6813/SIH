@@ -1,5 +1,7 @@
-import ApiError from "../utils/ApiError.js";
-import models from "../models/index.js";
+// import ApiError from "../utils/ApiError.js";
+import ApiError from "../../Shared/utils/ApiError.js";
+// import models from "../models/index.js";
+import models from "../../models/index.js";
 
 const { otpModel } = models;
 

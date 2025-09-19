@@ -8,7 +8,6 @@ const { blackListedTokenModel, userModel } = models;
 export const authFarmer = catchAsyncError(async (req, res, next) => {
     
     const accessToken = req.cookies?.accessToken || req.body?.accessToken || req.headers.authorization?.split(" ")[1];
-    // const refreshToken = req.cookies?.refreshToken;
 
     if(!accessToken){
         throw new ApiError(400, "TokenNotFoundError", "no access token found")
@@ -26,7 +25,6 @@ export const authFarmer = catchAsyncError(async (req, res, next) => {
     } catch (error) {
         throw new ApiError(401, "InvalidTokenError", "the access token is invalid");    
     }
-
 
     const user = await userModel.findById(decodedToken.id);
 
