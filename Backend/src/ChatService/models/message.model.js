@@ -42,6 +42,9 @@ const messageSchema = new mongoose.Schema({
   },
   voiceDuration: {
     type: Number, // in seconds
+    required: function() {
+      return this.messageType === 'voice';
+    }
   },
   voiceSize: {
     type: Number, // in bytes
@@ -54,6 +57,9 @@ const messageSchema = new mongoose.Schema({
   },
   videoDuration: {
     type: Number, // in seconds
+    required: function() {
+      return this.messageType === 'video';
+    }
   },
   videoSize: {
     type: Number, // in bytes

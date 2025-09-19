@@ -25,6 +25,22 @@ const conversationSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Additional metadata
+  totalMessages: {
+    type: Number,
+    default: 0
+  },
+  conversationMetadata: {
+    preferredLanguage: {
+      type: String,
+      enum: ['Hindi', 'English'],
+      default: 'English'
+    },
+    lastSeenByFarmer: {
+      type: Date,
+      default: Date.now
+    }
   }
 }, {
   timestamps: true
@@ -33,5 +49,18 @@ const conversationSchema = new mongoose.Schema({
 // Ensure one conversation per farmer
 conversationSchema.index({ farmerId: 1 }, { unique: true });
 conversationSchema.index({ lastActivity: -1 });
+conversationSchema.index({ isActive: 1, lastActivity: -1 });
+
+// Instance methods
+conversationSchema.methods.incrementMessageCount = function() {
+  this.totalMessages += 1;
+  return this.save();
+};
+
+conversationSchema.methods.markAsReadByFarmer = function() {
+  this.unreadCount = 0;
+  this.conversationMetadata.lastSeenByFarmer = new Date();
+  return this.save();
+};
 
 export const Conversation = mongoose.model('Conversation', conversationSchema);
