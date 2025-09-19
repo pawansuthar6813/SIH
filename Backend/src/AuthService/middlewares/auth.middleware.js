@@ -1,4 +1,5 @@
-import catchAsyncError from "./catchAsyncError.js";
+// import catchAsyncError from "./catchAsyncError.js";
+import catchAsyncError from "../../Shared/utils/catchAsyncError.js";
 import ApiError from "../../Shared/utils/ApiError.js";
 import models from "../../models/index.js";
 import jwt from "jsonwebtoken";

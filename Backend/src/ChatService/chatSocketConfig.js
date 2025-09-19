@@ -17,6 +17,8 @@ const {
     broadcastEmergencyMessage
 } = chatControllers;
 
+const AI_AGENT_API_KEY = process.env.AI_AGENT_API_KEY || 'your-secure-default-key';
+
 class ChatSocketManager {
     constructor(server) {
         this.io = new Server(server, {
@@ -27,56 +29,71 @@ class ChatSocketManager {
             },
             pingTimeout: 60000,
             pingInterval: 25000,
-            maxHttpBufferSize: 50e6, // 50MB for large media files
+            maxHttpBufferSize: 50e6,
             allowEIO3: true,
             transports: ['websocket', 'polling']
         });
 
-        this.connectedUsers = new Map(); // Store user connections
-        this.activeUploads = new Map(); // Track active file uploads
-        this.typingUsers = new Map(); // Track typing status
-        
+        this.connectedUsers = new Map();
+        this.connectedAIAgents = new Map(); // Track AI agent connections
+        this.activeUploads = new Map();
+        this.typingUsers = new Map();
+
         this.setupMiddleware();
         this.setupEventHandlers();
-        
+
         console.log('🌾 Kisaan Sahayak Chat Socket Server initialized');
     }
 
-    // Authentication middleware for socket connections
+    // Enhanced authentication middleware
     setupMiddleware() {
         this.io.use(async (socket, next) => {
             try {
-                const token = socket.handshake.auth.token || 
-                            socket.handshake.headers.authorization?.split(' ')[1] ||
-                            socket.handshake.query.token;
-                
+                // Check if connecting as AI agent
+                const apiKey = socket.handshake.auth.apiKey;
+                const isAiAgent = socket.handshake.auth.isAiAgent;
+
+                if (isAiAgent) {
+                    // Validate AI agent API key
+                    if (!apiKey || apiKey !== AI_AGENT_API_KEY) {
+                        return next(new Error('Invalid AI agent API key'));
+                    }
+
+                    // Set AI agent details
+                    socket.userId = 'kisaan_sahayak';
+                    socket.userRole = 'ai_agent';
+                    socket.userName = 'Kisaan Sahayak';
+                    socket.farmerId = socket.handshake.auth.farmerId;
+                    socket.connectionType = 'ai_agent';
+
+                    console.log(`🤖 AI Agent authenticated for farmer: ${socket.farmerId}`);
+                    return next();
+                }
+
+                // Regular user authentication with token
+                const token = socket.handshake.auth.token;
                 if (!token) {
                     return next(new Error('Authentication token required'));
                 }
 
-                // Verify JWT token
-                let decoded;
-                try {
-                    decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET_KEY);
-                } catch (jwtError) {
-                    return next(new Error('Invalid authentication token'));
-                }
-                
-                // Get user from database
+                // Verify user token
+                const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET_KEY);
                 const user = await userModel.findById(decoded.id);
+
                 if (!user) {
                     return next(new Error('User not found'));
                 }
 
-                // Attach user info to socket
+                // Set user details
                 socket.userId = user._id.toString();
                 socket.userRole = user.role;
                 socket.userName = user.name;
                 socket.user = user;
-                
+                socket.connectionType = 'user';
+
                 console.log(`🔐 User authenticated: ${socket.userName} (${socket.userId})`);
-                next();
-                
+                return next();
+
             } catch (error) {
                 console.error('Socket authentication error:', error.message);
                 next(new Error('Authentication failed'));
@@ -86,25 +103,42 @@ class ChatSocketManager {
 
     setupEventHandlers() {
         this.io.on('connection', (socket) => {
-            console.log(`👤 User connected: ${socket.userName} (${socket.userId})`);
+            console.log(`👤 Connection: ${socket.userName} (${socket.connectionType})`);
             
-            // Store user connection
-            this.connectedUsers.set(socket.userId, {
-                socketId: socket.id,
-                socket: socket,
-                name: socket.userName,
-                userRole: socket.userRole,
-                connectedAt: new Date()
-            });
+            if (socket.connectionType === 'user') {
+                // Store user connection
+                this.connectedUsers.set(socket.userId, {
+                    socketId: socket.id,
+                    socket: socket,
+                    name: socket.userName,
+                    userRole: socket.userRole,
+                    connectedAt: new Date()
+                });
 
-            // Join user to their personal room
-            socket.join(`user_${socket.userId}`);
-            
-            // Setup event handlers based on user role
-            if (socket.userRole === 'farmer') {
-                this.handleFarmerEvents(socket);
-            } else if (socket.userRole === 'admin') {
-                this.handleAdminEvents(socket);
+                // Join user to their personal room
+                socket.join(`user_${socket.userId}`);
+                
+                // Setup event handlers based on user role
+                if (socket.userRole === 'farmer') {
+                    this.handleFarmerEvents(socket);
+                } else if (socket.userRole === 'admin') {
+                    this.handleAdminEvents(socket);
+                }
+            } else if (socket.connectionType === 'ai_agent') {
+                // Store AI agent connection
+                this.connectedAIAgents.set(socket.farmerId, {
+                    socketId: socket.id,
+                    socket: socket,
+                    name: socket.userName,
+                    farmerId: socket.farmerId,
+                    connectedAt: new Date()
+                });
+
+                // Join AI agent to farmer's conversation room
+                socket.join(`user_${socket.farmerId}`);
+                socket.join(`ai_agent_${socket.farmerId}`);
+                
+                this.handleAIAgentEvents(socket);
             }
             
             this.handleMediaEvents(socket);
@@ -112,10 +146,159 @@ class ChatSocketManager {
             
             // Handle disconnection
             socket.on('disconnect', (reason) => {
-                console.log(`👋 User disconnected: ${socket.userName} (${reason})`);
-                this.connectedUsers.delete(socket.userId);
-                this.typingUsers.delete(socket.userId);
-                this.cleanupActiveUploads(socket.userId);
+                console.log(`👋 ${socket.connectionType} disconnected: ${socket.userName} (${reason})`);
+                
+                if (socket.connectionType === 'user') {
+                    this.connectedUsers.delete(socket.userId);
+                    this.typingUsers.delete(socket.userId);
+                    this.cleanupActiveUploads(socket.userId);
+                } else if (socket.connectionType === 'ai_agent') {
+                    this.connectedAIAgents.delete(socket.farmerId);
+                }
+            });
+        });
+    }
+
+    handleAIAgentEvents(socket) {
+        // AI agent sends response to farmer
+        socket.on('send_ai_response', async (data, callback) => {
+            try {
+                const { conversationId, content, messageType = 'text', alertType } = data;
+                
+                if (!conversationId || !content) {
+                    const error = { success: false, message: 'conversationId and content are required' };
+                    if (callback) callback(error);
+                    return;
+                }
+
+                // Verify AI agent is authorized for this conversation
+                const conversation = await conversationModel.findOne({ 
+                    _id: conversationId, 
+                    farmerId: socket.farmerId 
+                });
+                
+                if (!conversation) {
+                    const error = { success: false, message: 'Unauthorized conversation access' };
+                    if (callback) callback(error);
+                    return;
+                }
+
+                console.log(`🤖 AI Agent sending response to conversation: ${conversationId}`);
+
+                // Create AI response message
+                const aiMessage = new messageModel({
+                    conversationId,
+                    senderId: 'kisaan_sahayak',
+                    senderType: 'ai_agent',
+                    messageType,
+                    content,
+                    isProactive: alertType ? true : false,
+                    alertType: alertType || undefined,
+                    status: 'sent'
+                });
+
+                await aiMessage.save();
+
+                // Update conversation
+                await conversationModel.findByIdAndUpdate(conversationId, {
+                    lastMessage: aiMessage._id,
+                    lastActivity: new Date(),
+                    $inc: { unreadCount: 1, totalMessages: 1 }
+                });
+
+                // Emit to farmer
+                this.io.to(`user_${socket.farmerId}`).emit('new_message', {
+                    type: 'ai_response',
+                    message: aiMessage
+                });
+
+                // Emit to conversation room (for admins monitoring)
+                this.io.to(`conversation_${conversationId}`).emit('new_message', {
+                    type: 'ai_response',
+                    message: aiMessage
+                });
+
+                if (callback) callback({
+                    success: true,
+                    message: aiMessage
+                });
+
+            } catch (error) {
+                console.error('Error sending AI response:', error);
+                if (callback) callback({ success: false, error: error.message });
+            }
+        });
+
+        // AI agent requests conversation context
+        socket.on('get_conversation_context', async (data, callback) => {
+            try {
+                const { conversationId, limit = 10 } = data;
+                
+                // Verify authorization
+                const conversation = await conversationModel.findOne({ 
+                    _id: conversationId, 
+                    farmerId: socket.farmerId 
+                });
+                
+                if (!conversation) {
+                    const error = { success: false, message: 'Unauthorized conversation access' };
+                    if (callback) callback(error);
+                    return;
+                }
+
+                // Get recent messages for context
+                const messages = await messageModel.find({ conversationId })
+                    .sort({ createdAt: -1 })
+                    .limit(limit)
+                    .populate('conversationId', 'farmerId');
+
+                // Get farmer details
+                const farmer = await userModel.findById(socket.farmerId);
+
+                if (callback) callback({
+                    success: true,
+                    data: {
+                        conversation,
+                        messages: messages.reverse(), // Chronological order
+                        farmer: {
+                            name: farmer.name,
+                            state: farmer.state,
+                            district: farmer.district,
+                            preferredLanguage: farmer.preferredLanguage
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error getting conversation context:', error);
+                if (callback) callback({ success: false, error: error.message });
+            }
+        });
+
+        // AI agent indicates typing
+        socket.on('ai_typing_start', (data) => {
+            const { conversationId } = data;
+            this.io.to(`user_${socket.farmerId}`).emit('ai_typing', {
+                conversationId,
+                isTyping: true
+            });
+        });
+
+        socket.on('ai_typing_stop', (data) => {
+            const { conversationId } = data;
+            this.io.to(`user_${socket.farmerId}`).emit('ai_typing', {
+                conversationId,
+                isTyping: false
+            });
+        });
+
+        // AI agent health check
+        socket.on('ai_health_check', (callback) => {
+            if (callback) callback({
+                success: true,
+                status: 'healthy',
+                farmerId: socket.farmerId,
+                timestamp: new Date()
             });
         });
     }
@@ -126,7 +309,7 @@ class ChatSocketManager {
         socket.on('join_conversation', async (callback) => {
             try {
                 console.log(`💬 ${socket.userName} joining conversation`);
-                
+
                 // Create mock request object for controller
                 const mockReq = {
                     user: socket.user,
@@ -139,14 +322,14 @@ class ChatSocketManager {
                                 const conversation = data.data;
                                 // Join conversation room
                                 socket.join(`conversation_${conversation._id}`);
-                                
+
                                 // Send success response
                                 if (callback) callback({
                                     success: true,
                                     conversationId: conversation._id,
                                     conversation: conversation
                                 });
-                                
+
                                 socket.emit('conversation_joined', {
                                     success: true,
                                     conversationId: conversation._id,
@@ -159,12 +342,12 @@ class ChatSocketManager {
                         }
                     })
                 };
-                
+
                 await getOrCreateConversation(mockReq, mockRes, (error) => {
                     console.error('Error in getOrCreateConversation:', error);
                     if (callback) callback({ success: false, error: error.message });
                 });
-                
+
             } catch (error) {
                 console.error('Error joining conversation:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -180,13 +363,13 @@ class ChatSocketManager {
         socket.on('get_messages', async (data, callback) => {
             try {
                 const { conversationId, page = 1, limit = 50 } = data;
-                
+
                 const mockReq = {
                     user: socket.user,
                     params: { conversationId },
                     query: { page, limit }
                 };
-                
+
                 const mockRes = {
                     status: (code) => ({
                         json: (response) => {
@@ -198,12 +381,12 @@ class ChatSocketManager {
                         }
                     })
                 };
-                
+
                 await getMessages(mockReq, mockRes, (error) => {
                     console.error('Error getting messages:', error);
                     if (callback) callback({ success: false, error: error.message });
                 });
-                
+
             } catch (error) {
                 console.error('Error getting messages:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -214,21 +397,21 @@ class ChatSocketManager {
         socket.on('send_message', async (data, callback) => {
             try {
                 const { conversationId, content, messageType = 'text' } = data;
-                
+
                 if (!conversationId || !content) {
                     const error = { success: false, message: 'conversationId and content are required' };
                     if (callback) callback(error);
                     return;
                 }
-                
+
                 console.log(`📝 ${socket.userName} sending ${messageType} message`);
-                
+
                 const mockReq = {
                     user: socket.user,
                     body: { conversationId, content, messageType },
                     io: this.io
                 };
-                
+
                 const mockRes = {
                     status: (code) => ({
                         json: (response) => {
@@ -238,7 +421,7 @@ class ChatSocketManager {
                                     type: 'farmer_message',
                                     message: response.data
                                 });
-                                
+
                                 if (callback) callback({
                                     success: true,
                                     message: response.data
@@ -250,12 +433,12 @@ class ChatSocketManager {
                         }
                     })
                 };
-                
+
                 await sendFarmerMessage(mockReq, mockRes, (error) => {
                     console.error('Error sending message:', error);
                     if (callback) callback({ success: false, error: error.message });
                 });
-                
+
             } catch (error) {
                 console.error('Error sending message:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -274,7 +457,7 @@ class ChatSocketManager {
                 conversationId,
                 startedAt: new Date()
             });
-            
+
             // Notify admins monitoring this conversation
             this.io.to('admin_monitoring').emit('farmer_typing', {
                 farmerId: socket.userId,
@@ -287,7 +470,7 @@ class ChatSocketManager {
         socket.on('typing_stop', (data) => {
             const { conversationId } = data;
             this.typingUsers.delete(socket.userId);
-            
+
             this.io.to('admin_monitoring').emit('farmer_typing', {
                 farmerId: socket.userId,
                 farmerName: socket.userName,
@@ -300,12 +483,12 @@ class ChatSocketManager {
         socket.on('mark_messages_read', async (data, callback) => {
             try {
                 const { conversationId } = data;
-                
+
                 const mockReq = {
                     user: socket.user,
                     params: { conversationId }
                 };
-                
+
                 const mockRes = {
                     status: (code) => ({
                         json: (response) => {
@@ -317,12 +500,12 @@ class ChatSocketManager {
                         }
                     })
                 };
-                
+
                 await markAsRead(mockReq, mockRes, (error) => {
                     console.error('Error marking as read:', error);
                     if (callback) callback({ success: false, error: error.message });
                 });
-                
+
             } catch (error) {
                 console.error('Error marking messages as read:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -330,21 +513,58 @@ class ChatSocketManager {
         });
     }
 
+    // Helper method to notify AI agents
+    notifyAIAgent(farmerId, eventType, data) {
+        const aiAgent = this.connectedAIAgents.get(farmerId);
+        if (aiAgent) {
+            aiAgent.socket.emit(eventType, data);
+            console.log(`🔔 Notified AI agent for farmer ${farmerId}: ${eventType}`);
+        }
+    }
+
+    async connectAIAgentToFarmer(farmerId) {
+        try {
+            // Generate bot token for this farmer
+            const response = await fetch(`${process.env.BACKEND_URL}/chat/bot-token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ farmerId })
+            });
+            
+            const { botToken } = await response.json();
+            
+            // Connect AI agent with bot token
+            const aiSocket = require('socket.io-client')(`${process.env.BACKEND_URL}`, {
+                auth: { token: botToken },
+                transports: ['websocket']
+            });
+            
+            aiSocket.on('connect', () => {
+                console.log(`🤖 AI Agent connected for farmer: ${farmerId}`);
+            });
+            
+            return aiSocket;
+        } catch (error) {
+            console.error('Error connecting AI agent:', error);
+            throw error;
+        }
+    }
+
     // Handle media upload events
     handleMediaEvents(socket) {
         // Handle chunked file upload for large files
         socket.on('upload_chunk', async (data) => {
             try {
-                const { 
-                    fileId, 
-                    chunkIndex, 
-                    chunkData, 
-                    totalChunks, 
-                    fileType, 
+                const {
+                    fileId,
+                    chunkIndex,
+                    chunkData,
+                    totalChunks,
+                    fileType,
                     fileName,
-                    conversationId 
+                    conversationId
                 } = data;
-                
+
                 // Initialize upload tracking if first chunk
                 if (chunkIndex === 0) {
                     this.activeUploads.set(fileId, {
@@ -356,23 +576,23 @@ class ChatSocketManager {
                         receivedChunks: new Map(),
                         startedAt: new Date()
                     });
-                    
+
                     console.log(`📤 ${socket.userName} starting file upload: ${fileName}`);
                 }
-                
+
                 const upload = this.activeUploads.get(fileId);
                 if (!upload) {
                     throw new Error('Upload session not found');
                 }
-                
+
                 // Validate chunk belongs to user
                 if (upload.userId !== socket.userId) {
                     throw new Error('Upload session does not belong to user');
                 }
-                
+
                 // Store chunk
                 upload.receivedChunks.set(chunkIndex, Buffer.from(chunkData, 'base64'));
-                
+
                 // Calculate and emit progress
                 const progress = (upload.receivedChunks.size / totalChunks) * 100;
                 socket.emit('upload_progress', {
@@ -381,12 +601,12 @@ class ChatSocketManager {
                     receivedChunks: upload.receivedChunks.size,
                     totalChunks
                 });
-                
+
                 // Check if all chunks received
                 if (upload.receivedChunks.size === totalChunks) {
                     await this.processCompleteUpload(fileId, socket);
                 }
-                
+
             } catch (error) {
                 console.error('Error handling upload chunk:', error);
                 socket.emit('upload_error', {
@@ -409,33 +629,33 @@ class ChatSocketManager {
         // Handle simple media message (for small files sent directly)
         socket.on('send_media_message', async (data, callback) => {
             try {
-                const { 
-                    conversationId, 
-                    mediaData, 
-                    messageType, 
+                const {
+                    conversationId,
+                    mediaData,
+                    messageType,
                     fileName,
-                    fileSize 
+                    fileSize
                 } = data;
-                
+
                 if (!conversationId || !mediaData || !messageType) {
                     const error = { success: false, message: 'Missing required media data' };
                     if (callback) callback(error);
                     return;
                 }
-                
+
                 console.log(`🎬 ${socket.userName} sending ${messageType} message: ${fileName}`);
-                
+
                 // TODO: Upload media to cloud storage
                 // For now, we'll simulate the upload
                 const mediaUrl = await this.simulateMediaUpload(mediaData, messageType, socket.userId);
-                
+
                 // Create message based on media type
                 let messageData = {
                     conversationId,
                     messageType,
                     content: `${messageType} message`
                 };
-                
+
                 if (messageType === 'image') {
                     messageData.imageUrl = mediaUrl;
                 } else if (messageType === 'voice') {
@@ -448,13 +668,13 @@ class ChatSocketManager {
                     messageData.videoSize = fileSize;
                     messageData.videoThumbnail = data.thumbnail;
                 }
-                
+
                 const mockReq = {
                     user: socket.user,
                     body: messageData,
                     io: this.io
                 };
-                
+
                 const mockRes = {
                     status: (code) => ({
                         json: (response) => {
@@ -464,7 +684,7 @@ class ChatSocketManager {
                                     type: 'farmer_message',
                                     message: response.data
                                 });
-                                
+
                                 if (callback) callback({
                                     success: true,
                                     message: response.data
@@ -476,12 +696,12 @@ class ChatSocketManager {
                         }
                     })
                 };
-                
+
                 await sendFarmerMessage(mockReq, mockRes, (error) => {
                     console.error('Error sending media message:', error);
                     if (callback) callback({ success: false, error: error.message });
                 });
-                
+
             } catch (error) {
                 console.error('Error sending media message:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -495,7 +715,7 @@ class ChatSocketManager {
         socket.on('admin_monitor_all', () => {
             socket.join('admin_monitoring');
             console.log(`👨‍💼 Admin ${socket.userName} monitoring all conversations`);
-            
+
             socket.emit('admin_monitoring_started', {
                 success: true,
                 message: 'Now monitoring all farmer conversations'
@@ -513,13 +733,13 @@ class ChatSocketManager {
         socket.on('send_proactive_message', async (data, callback) => {
             try {
                 const { farmerId, content, alertType = 'general', messageType = 'text' } = data;
-                
+
                 if (!farmerId || !content) {
                     const error = { success: false, message: 'farmerId and content are required' };
                     if (callback) callback(error);
                     return;
                 }
-                
+
                 // Get farmer's conversation
                 const conversation = await conversationModel.findOne({ farmerId });
                 if (!conversation) {
@@ -527,23 +747,23 @@ class ChatSocketManager {
                     if (callback) callback(error);
                     return;
                 }
-                
+
                 const messageData = { content, alertType, messageType };
                 const message = await sendProactiveMessage(conversation._id, messageData, this.io);
-                
+
                 // Send to specific farmer if online
                 this.io.to(`user_${farmerId}`).emit('proactive_alert', {
                     message: message,
                     alertType: alertType
                 });
-                
+
                 if (callback) callback({
                     success: true,
                     message: message
                 });
-                
+
                 console.log(`📢 Admin ${socket.userName} sent proactive message to farmer ${farmerId}`);
-                
+
             } catch (error) {
                 console.error('Error sending proactive message:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -554,23 +774,23 @@ class ChatSocketManager {
         socket.on('broadcast_emergency', async (data, callback) => {
             try {
                 const { message, alertType = 'emergency' } = data;
-                
+
                 if (!message) {
                     const error = { success: false, message: 'Message content is required' };
                     if (callback) callback(error);
                     return;
                 }
-                
+
                 const results = await broadcastEmergencyMessage(message, alertType, this.io);
-                
+
                 if (callback) callback({
                     success: true,
                     broadcastCount: results.length,
                     message: `Emergency broadcast sent to ${results.length} farmers`
                 });
-                
+
                 console.log(`🚨 Admin ${socket.userName} broadcasted emergency to ${results.length} farmers`);
-                
+
             } catch (error) {
                 console.error('Error broadcasting emergency:', error);
                 if (callback) callback({ success: false, error: error.message });
@@ -595,13 +815,13 @@ class ChatSocketManager {
                 userRole: user.userRole,
                 connectedAt: user.connectedAt
             }));
-            
+
             const response = {
                 success: true,
                 onlineUsers,
                 totalOnline: onlineUsers.length
             };
-            
+
             if (callback) callback(response);
             socket.emit('online_users_list', response);
         });
@@ -623,21 +843,21 @@ class ChatSocketManager {
         try {
             const upload = this.activeUploads.get(fileId);
             if (!upload) throw new Error('Upload not found');
-            
+
             console.log(`✅ ${socket.userName} completed file upload: ${upload.fileName}`);
-            
+
             // Reconstruct file from chunks
             const chunks = [];
             for (let i = 0; i < upload.totalChunks; i++) {
                 chunks.push(upload.receivedChunks.get(i));
             }
             const completeFile = Buffer.concat(chunks);
-            
+
             // TODO: Upload to cloud storage based on file type
             // For now, simulate upload
             let mediaUrl;
             let messageType;
-            
+
             if (upload.fileType.startsWith('image/')) {
                 mediaUrl = await this.simulateMediaUpload(completeFile, 'image', upload.userId);
                 messageType = 'image';
@@ -650,14 +870,14 @@ class ChatSocketManager {
             } else {
                 throw new Error('Unsupported file type');
             }
-            
+
             // Create message data
             let messageData = {
                 conversationId: upload.conversationId,
                 messageType,
                 content: `${messageType} message: ${upload.fileName}`
             };
-            
+
             if (messageType === 'image') {
                 messageData.imageUrl = mediaUrl;
             } else if (messageType === 'voice') {
@@ -670,28 +890,28 @@ class ChatSocketManager {
                 messageData.videoSize = completeFile.length;
                 messageData.videoThumbnail = upload.thumbnail || null;
             }
-            
+
             // Send message using controller
             const mockReq = {
                 user: socket.user,
                 body: messageData,
                 io: this.io
             };
-            
+
             const mockRes = {
                 status: (code) => ({
                     json: (response) => {
                         if (response.success) {
                             // Clean up upload tracking
                             this.activeUploads.delete(fileId);
-                            
+
                             // Emit success to farmer
                             socket.emit('upload_complete', {
                                 success: true,
                                 fileId,
                                 message: response.data
                             });
-                            
+
                             // Emit to conversation room
                             this.io.to(`conversation_${upload.conversationId}`).emit('new_message', {
                                 type: 'farmer_message',
@@ -704,11 +924,11 @@ class ChatSocketManager {
                     }
                 })
             };
-            
+
             await sendFarmerMessage(mockReq, mockRes, (error) => {
                 throw error;
             });
-            
+
         } catch (error) {
             console.error('Error processing complete upload:', error);
             this.activeUploads.delete(fileId);
@@ -729,7 +949,7 @@ class ChatSocketManager {
             voice: 'mp3',
             video: 'mp4'
         };
-        
+
         const extension = fileExtensions[mediaType] || 'bin';
         return `https://res.cloudinary.com/kisaan-sahayak/${mediaType}/upload/v${timestamp}/${userId}_${mediaType}.${extension}`;
     }
@@ -749,7 +969,7 @@ class ChatSocketManager {
     }
 
     // Public methods for external use
-    
+
     // Send message to specific user
     async sendMessageToUser(userId, eventName, data) {
         this.io.to(`user_${userId}`).emit(eventName, data);
@@ -759,7 +979,7 @@ class ChatSocketManager {
     async sendMessageToRole(role, eventName, data) {
         const targetUsers = Array.from(this.connectedUsers.values())
             .filter(user => user.userRole === role);
-        
+
         targetUsers.forEach(user => {
             user.socket.emit(eventName, data);
         });
@@ -775,13 +995,13 @@ class ChatSocketManager {
             }
 
             const message = await sendProactiveMessage(conversation._id, messageData, this.io);
-            
+
             // Send to farmer if online
             this.io.to(`user_${farmerId}`).emit('proactive_alert', {
                 message: message,
                 alertType: messageData.alertType || 'general'
             });
-            
+
             return message;
         } catch (error) {
             console.error('Error sending proactive message:', error);
@@ -792,11 +1012,11 @@ class ChatSocketManager {
     // Method to broadcast to all farmers (for emergency alerts)
     async broadcastToAllFarmers(message, alertType = 'emergency') {
         console.log(`📢 Broadcasting ${alertType} alert to all farmers`);
-        
+
         // Send via socket to all connected farmers
         const farmers = Array.from(this.connectedUsers.values())
             .filter(user => user.userRole === 'farmer');
-        
+
         farmers.forEach(farmer => {
             farmer.socket.emit('emergency_alert', {
                 message: message,
@@ -804,14 +1024,14 @@ class ChatSocketManager {
                 timestamp: new Date()
             });
         });
-        
+
         // Also save to database via controller
         try {
             await broadcastEmergencyMessage(message, alertType, this.io);
         } catch (error) {
             console.error('Error saving broadcast to database:', error);
         }
-        
+
         return farmers.length;
     }
 
@@ -819,7 +1039,7 @@ class ChatSocketManager {
     async sendWeatherAlert(states, districts, weatherData) {
         try {
             const targetFarmers = [];
-            
+
             // Get farmers in specified regions
             const farmers = await userModel.find({
                 role: 'farmer',
@@ -828,13 +1048,13 @@ class ChatSocketManager {
                     { district: { $in: districts } }
                 ]
             });
-            
+
             for (const farmer of farmers) {
                 // Check if farmer is online
                 const connection = this.connectedUsers.get(farmer._id.toString());
                 if (connection) {
                     targetFarmers.push(farmer);
-                    
+
                     // Send weather alert
                     connection.socket.emit('weather_alert', {
                         message: weatherData.message,
@@ -843,7 +1063,7 @@ class ChatSocketManager {
                         timestamp: new Date()
                     });
                 }
-                
+
                 // Also send proactive message to conversation
                 await this.sendProactiveMessageToFarmer(farmer._id, {
                     content: weatherData.message,
@@ -851,10 +1071,10 @@ class ChatSocketManager {
                     messageType: 'weather_alert'
                 });
             }
-            
+
             console.log(`🌦️ Weather alert sent to ${targetFarmers.length} farmers in regions: ${states.join(', ')}, ${districts.join(', ')}`);
             return targetFarmers.length;
-            
+
         } catch (error) {
             console.error('Error sending weather alert:', error);
             throw error;
@@ -866,9 +1086,9 @@ class ChatSocketManager {
         try {
             const query = { role: 'farmer', ...targetCriteria };
             const farmers = await userModel.find(query);
-            
+
             let notificationsSent = 0;
-            
+
             for (const farmer of farmers) {
                 const connection = this.connectedUsers.get(farmer._id.toString());
                 if (connection) {
@@ -880,7 +1100,7 @@ class ChatSocketManager {
                     });
                     notificationsSent++;
                 }
-                
+
                 // Also send proactive message
                 await this.sendProactiveMessageToFarmer(farmer._id, {
                     content: schemeData.message,
@@ -888,25 +1108,26 @@ class ChatSocketManager {
                     messageType: 'scheme_alert'
                 });
             }
-            
+
             console.log(`🏛️ Government scheme alert sent to ${notificationsSent} farmers`);
             return notificationsSent;
-            
+
         } catch (error) {
             console.error('Error sending scheme alert:', error);
             throw error;
         }
     }
 
-    // Get connection statistics
     getConnectionStats() {
         const farmers = Array.from(this.connectedUsers.values()).filter(u => u.userRole === 'farmer');
         const admins = Array.from(this.connectedUsers.values()).filter(u => u.userRole === 'admin');
+        const aiAgents = Array.from(this.connectedAIAgents.values());
         
         return {
-            totalConnections: this.connectedUsers.size,
+            totalConnections: this.connectedUsers.size + this.connectedAIAgents.size,
             farmers: farmers.length,
             admins: admins.length,
+            aiAgents: aiAgents.length,
             activeUploads: this.activeUploads.size,
             typingUsers: this.typingUsers.size,
             farmersOnline: farmers.map(f => ({
@@ -918,6 +1139,12 @@ class ChatSocketManager {
                 id: a.socketId,
                 name: a.name,
                 connectedAt: a.connectedAt
+            })),
+            aiAgentsOnline: aiAgents.map(ai => ({
+                id: ai.socketId,
+                name: ai.name,
+                farmerId: ai.farmerId,
+                connectedAt: ai.connectedAt
             }))
         };
     }
@@ -952,20 +1179,20 @@ class ChatSocketManager {
     // Graceful shutdown
     async shutdown() {
         console.log('🛑 Shutting down Chat Socket Manager...');
-        
+
         // Notify all connected users
         this.io.emit('server_shutdown', {
             message: 'Server is shutting down. Please reconnect in a few moments.',
             timestamp: new Date()
         });
-        
+
         // Clean up active uploads
         this.activeUploads.clear();
         this.typingUsers.clear();
-        
+
         // Close all connections
         this.io.close();
-        
+
         console.log('✅ Chat Socket Manager shutdown complete');
     }
 }

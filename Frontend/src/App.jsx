@@ -1,6 +1,7 @@
 
 import { Route, Routes } from 'react-router-dom'
 import Home from './pages/Home.jsx'
+import KisanSahayak from './pages/KisanSahayak.jsx'
 
 const App = () => {
   return (
@@ -10,6 +11,7 @@ const App = () => {
 
         {/* user routes */}
         <Route path='/' element={<Home />} />
+        <Route path='/kisaan-sahayak' element={<KisanSahayak />} />
 
         {/* admin routes */}
 
