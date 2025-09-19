@@ -1,12 +1,14 @@
-import catchAsyncError from "../middlewares/catchAsyncError.js";
-import ApiError from "../utils/ApiError.js";
-import ApiResponse from "../utils/ApiResponse.js";
+
+import catchAsyncError from "../../Shared/utils/catchAsyncError.js";
+import ApiError from "../../Shared/utils/ApiError.js";
+import ApiResponse from "../../Shared/utils/ApiResponse.js";
 import { sendOTP, verifyOTP } from "../services/auth.service.js";
+// import { sendOTP } from "../services/auth.service.js";
 import { generateOTP } from "../services/auth.service.js";
 import generateTokens from "../services/generateTokens.js";
 import jwt from 'jsonwebtoken'
 
-import models from "../models/index.js";
+import models from "../../models/index.js";
 
 const { userModel, otpModel, blackListedTokenModel } = models;
 

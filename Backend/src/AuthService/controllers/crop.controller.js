@@ -1,7 +1,7 @@
-import models from "../models/index.js";
-import catchAsyncError from "../middlewares/catchAsyncError.js";
-import ApiError from "../utils/ApiError.js";
-import ApiResponse from "../utils/ApiResponse.js";
+import models from "../../models/index.js";
+import catchAsyncError from "../../middlewares/catchAsyncError.js";
+import ApiError from "../../utils/ApiError.js";
+import ApiResponse from "../../utils/ApiResponse.js";
 
 
 const addCropController = catchAsyncError(async (req, res, next) => {
